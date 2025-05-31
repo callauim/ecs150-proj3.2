@@ -186,14 +186,100 @@ int fs_info(void)
 	return 0;
 }
 
+//find_file will return the index of the file, otherwise -1
+static int find_file(const char *filename)
+{
+	if(!filename || strlen(filename) >= FS_FILENAME_LEN) {
+		return -1;
+	}
+
+	//Just iterate through all files and compare name
+	//Return index if match is found
+	for (int i = 0; i < FS_FILE_MAX_COUNT; i++) {
+        if (strcmp((char*)root_dir[i].filename, filename) == 0) {
+            return i;
+        }
+    }
+
+	//File not found
+	return -1;
+}
+
+//find_empty_entry will return the index of the first empty entry, otherwise -1
+static int find_empty_entry(void)
+{
+    for (int i = 0; i < FS_FILE_MAX_COUNT; i++) {
+        if (root_dir[i].filename[0] == '\0') {
+            return i;
+        }
+    }
+    return -1;
+}
+
+//write_root 
+static int write_root(void)
+{
+	uint8_t block[BLOCK_SIZE];
+    memcpy(block, root_dir, sizeof(root_dir));
+    return block_write(sb.root_dir_index, block);
+}
+
 int fs_create(const char *filename)
 {
-	/* TODO: Phase 2 */
+	if (!mounted || !filename) {
+		return -1;
+	}
+
+	//If file name is too long
+	if (strlen(filename) >= FS_FILENAME_LEN) {
+		return -1;
+	}
+
+	//If file name already exists
+	if (find_file(filename) >= 0) {
+		return -1;
+	}
+
+	//Find empty entry
+	int index = find_empty_entry();
+	if (index < 0) {
+		return -1;
+	}
+	
+	//Initialize new entry at index
+	//Clear entry, set filename, size = 0, first index = FAT_EOC
+	memset(&root_dir[index], 0, sizeof(struct root_entry));
+	strcpy((char*)root_dir[index].filename, filename);
+	root_dir[index].file_size = 0;
+	root_dir[index].first_data_block = FAT_EOC;
+
+	//Write to disk
+	if (write_root < 0) {
+		return -1;
+	}
+
+	return 0;
 }
 
 int fs_delete(const char *filename)
 {
-	/* TODO: Phase 2 */
+	if (!mounted || !filename) {
+		return -1;
+	}
+
+	int index = find_file(filename);
+	if (index < 0) {
+		return -1;
+	}
+	
+	if (root_dir[index].first_data_block != FAT_EOC) {
+		
+	}
+
+	//free file entry
+	//free fat
+
+	return 0;
 }
 
 int fs_ls(void)
