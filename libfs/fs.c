@@ -216,7 +216,8 @@ static int find_empty_entry(void)
     return -1;
 }
 
-//write_root 
+//write_root creates buffer, puts root directory in buffer, and writes the buffer to disk
+//returns 0 on success, otherwise -1
 static int write_root(void)
 {
 	uint8_t block[BLOCK_SIZE];
@@ -267,24 +268,39 @@ int fs_delete(const char *filename)
 		return -1;
 	}
 
+	//If file doesn't exist
 	int index = find_file(filename);
 	if (index < 0) {
 		return -1;
 	}
 	
+	//Free data blocks in FAT
 	if (root_dir[index].first_data_block != FAT_EOC) {
-		
+		//TODO
 	}
 
 	//free file entry
-	//free fat
+	memset(&root_dir[index], 0, sizeof(struct root_entry));
+
+	//Write to disk
+	if (write_root_directory() < 0) {
+        return -1;
+    }
 
 	return 0;
 }
 
 int fs_ls(void)
 {
-	/* TODO: Phase 2 */
+	if (!mounted) {
+		return -1;
+	}
+
+	//TODO
+	//print stuff here
+	//Need to see reference output later
+
+	return 0;
 }
 
 int fs_open(const char *filename)
