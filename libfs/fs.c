@@ -296,9 +296,15 @@ int fs_ls(void)
 		return -1;
 	}
 
-	//TODO
-	//print stuff here
-	//Need to see reference output later
+	printf("FS Ls:\n");
+    for (int i = 0; i < FS_FILE_MAX_COUNT; i++) {
+        if (root_dir[i].filename[0] != '\0') {
+            printf("file: %s, size: %u, data_blk: %u\n", 
+                   root_dir[i].filename, 
+                   root_dir[i].file_size, 
+                   root_dir[i].first_data_block);
+        }
+    }
 
 	return 0;
 }
