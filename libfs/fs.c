@@ -30,6 +30,13 @@ struct __attribute__((packed)) root_entry {
 	uint8_t padding[10];
 };
 
+/* Struct to track open files */
+static struct {
+	int in_use; // 1 = in_use
+	int root_index;
+	size_t offset;
+} open_files[FS_OPEN_MAX_COUNT];
+
 // Global Vars
 static struct superblock sb;
 static uint16_t *fat = NULL;
@@ -41,7 +48,7 @@ int fs_mount(const char *diskname)
 	uint8_t block[BLOCK_SIZE];
 	size_t fat_size_bytes;
 
-	// Check if already mounted
+	// Check if mounted
 	if (mounted) {
 		return -1;
 	}
@@ -125,6 +132,9 @@ int fs_mount(const char *diskname)
 	}
 	memcpy(root_dir, block, sizeof(root_dir));
 
+	/* Initialize open_files array */
+	memset(open_files, 0, sizeof(open_files));
+
 	mounted = 1;
 	return 0;
 }
@@ -146,6 +156,7 @@ int fs_umount(void)
 	
 	memset(&sb, 0, sizeof(sb));
 	memset(root_dir, 0, sizeof(root_dir));
+	memset(open_files, 0, sizeof(open_files));
 	mounted = 0;
 	
 	return 0;
@@ -351,12 +362,56 @@ int fs_ls(void)
 
 int fs_open(const char *filename)
 {
-	/* TODO: Phase 3 */
+	/* Check if mounted */
+	if (!mounted || !filename) {
+		return -1;
+	}
+
+	/* Retreive file from root directory */
+	int root_index = find_file(filename);
+	if (root_index < 0) {
+		return -1; // did not find the file
+	}
+
+	/* Secure an unused file descriptor */
+	int fd = -1;
+	for (int i = 0; i < FS_OPEN_MAX_COUNT; i++) {
+		if (!open_files[i].in_use) {
+			fd = i;
+			break;
+		}
+	}
+
+	if (fd == -1) {
+		return -1; // error if no available file descriptors
+	}
+
+	/* Initialize file descriptor */
+	open_files[fd].in_use = 1;
+	open_files[fd].root_index = root_index;
+	open_files[fd].offset = 0;
+
+	return fd;
 }
 
 int fs_close(int fd)
 {
-	/* TODO: Phase 3 */
+	/* Check if mounted */
+	if (!mounted) {
+		return -1;
+	}
+
+	/* Validate file descriptor */
+	if (fd < 0 || fd >= FS_OPEN_MAX_COUNT || !open_files[fd].in_use) {
+		return -1;
+	}
+
+	/* Reset file descriptor values */
+	open_files[fd].in_use = 0;
+	open_files[fd].root_index = 0;
+	open_files[fd].offset = 0;
+
+	return 0;
 }
 
 int fs_stat(int fd)
