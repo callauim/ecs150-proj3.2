@@ -225,6 +225,38 @@ static int write_root(void)
     return block_write(sb.root_dir_index, block);
 }
 
+//write_fat is similar to write_root, as it writes fat to disk
+//returns 0 on success, otherwise -1
+static int write_fat(void)
+{
+	uint8_t block[BLOCK_SIZE];
+	for (int i = 0; i < sb.fat_block_count; i++) {
+    	memcpy(block, (uint8_t*)fat + i * BLOCK_SIZE, BLOCK_SIZE);
+        if (block_write(1 + i, block) < 0) {
+            return -1;
+        }
+    }
+    
+    return 0;
+}
+
+//free_fat frees files contents from FAT starting from givne block
+static int free_fat(uint16_t first_block)
+{
+	uint16_t current_block = first_block;
+    
+    while (current_block != FAT_EOC) {
+        if (current_block == 0 || current_block >= sb.data_block_count) {
+            return -1; 
+		}
+        uint16_t next_block = fat[current_block];
+        fat[current_block] = 0; 
+        current_block = next_block;
+    }
+    
+    return 0;
+}
+
 int fs_create(const char *filename)
 {
 	if (!mounted || !filename) {
@@ -255,7 +287,7 @@ int fs_create(const char *filename)
 	root_dir[index].first_data_block = FAT_EOC;
 
 	//Write to disk
-	if (write_root < 0) {
+	if (write_root() < 0) {
 		return -1;
 	}
 
@@ -274,16 +306,24 @@ int fs_delete(const char *filename)
 		return -1;
 	}
 	
+	//TODO: Need to check if file is open
 	//Free data blocks in FAT
 	if (root_dir[index].first_data_block != FAT_EOC) {
-		//TODO
+		if (free_fat(root_dir[index].first_data_block) < 0) {
+			return -1;
+		}
+		
+		// Write updated FAT to disk
+		if (write_fat() < 0) {
+			return -1;
+		}
 	}
 
 	//free file entry
 	memset(&root_dir[index], 0, sizeof(struct root_entry));
 
 	//Write to disk
-	if (write_root_directory() < 0) {
+	if (write_root() < 0) {
         return -1;
     }
 
