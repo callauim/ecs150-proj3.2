@@ -527,11 +527,35 @@ int fs_read(int fd, void *buf, size_t count)
 	}
 
 	size_t bytes_read = 0;
+	uint8_t *buffer = (uint8_t *)buf;
+    uint8_t bounce_buffer[BLOCK_SIZE];
 
-	//TODO
-	//Read calculated # of bytes
+	/*  3 Cases:
+		1) Partial Block Read
+		2) Full Block Read
+		3) Multiple Block Read
+	*/
 	while (bytes_read < bytes_to_read) {
+		//Track overall position in file
+		size_t offset_in_file = current_offset + bytes_read;
+		//Track position within current block
+		size_t offset_in_block = offset_in_file % BLOCK_SIZE;
+		//Calculate how many more bytes can we read from current block
+		size_t bytes_left_in_block = BLOCK_SIZE - offset_in_block;
 
+		//Calculate how many bytes should we read in current iter/block
+		//If we have to read more than we can now, read till end of block
+		//otherwise, read what we need
+		size_t bytes_to_read_now = bytes_to_read - bytes_read;
+		if (bytes_to_read_now > bytes_left_in_block) {
+			bytes_to_read_now = bytes_left_in_block;
+		}
+
+		//Go to the right block
+		//Bounce Buffer: Read entire block -> copy into user's buf
+		
+		//Update counters
+		bytes_read += bytes_to_read_now;
 	}
 
 	//Update offset
