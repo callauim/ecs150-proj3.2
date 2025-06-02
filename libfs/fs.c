@@ -416,12 +416,47 @@ int fs_close(int fd)
 
 int fs_stat(int fd)
 {
-	/* TODO: Phase 3 */
+	/* Check if mounted*/
+    if (!mounted) {
+        return -1;
+    }
+
+    /* Validate file descriptor */
+    if (fd < 0 || fd >= FS_OPEN_MAX_COUNT || !open_files[fd].in_use) {
+        return -1; // Invalid or not open
+    }
+
+    /* Get root index */
+    int root_index = open_files[fd].root_index;
+
+    /* Return file size */
+    return root_dir[root_index].file_size;
 }
 
 int fs_lseek(int fd, size_t offset)
 {
-	/* TODO: Phase 3 */
+	/* Check if mounted */
+    if (!mounted) {
+        return -1;
+    }
+
+    /* Validate file descriptor */
+    if (fd < 0 || fd >= FS_OPEN_MAX_COUNT || !open_files[fd].in_use) {
+        return -1; // Invalid or not open
+    }
+
+    /* Get root index */
+    int root_index = open_files[fd].root_index;
+
+    /* Make sure offset does not exceed file size */
+    if (offset > root_dir[root_index].file_size) {
+        return -1;
+    }
+
+    /* Update the offset */
+    open_files[fd].offset = offset;
+
+    return 0;
 }
 
 int fs_write(int fd, void *buf, size_t count)
