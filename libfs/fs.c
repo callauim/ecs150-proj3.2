@@ -144,6 +144,23 @@ int fs_umount(void)
 	if (!mounted) {
 		return -1;
 	}
+
+	//Check if any files are still open
+	//If so, cannot unmount
+	for (int i = 0; i < FS_OPEN_MAX_COUNT; i++) {
+        if (open_files[i].in_use) {
+            return -1;
+        }
+    }
+
+	//Save all changes to disk
+	if (write_fat() < 0) {
+        return -1;
+    }
+    
+    if (write_root() < 0) {
+        return -1;
+    }
 	
 	if (block_disk_close() < 0) {
 		return -1;
