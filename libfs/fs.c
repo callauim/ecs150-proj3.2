@@ -499,5 +499,43 @@ int fs_write(int fd, void *buf, size_t count)
 
 int fs_read(int fd, void *buf, size_t count)
 {
-	/* TODO: Phase 4 */
+	if (!mounted || !buf) {
+		return -1;
+	}
+
+	//If fd is valid
+	if (fd < 0 || fd >= FS_OPEN_MAX_COUNT || !open_files[fd].in_use) {
+		return -1;
+	}
+
+	//Get file information
+	int root_index = open_files[fd].root_index;
+    size_t current_offset = open_files[fd].offset;
+
+	uint32_t file_size = root_dir[root_index].file_size;
+    uint16_t first_block = root_dir[root_index].first_data_block;
+
+	//Use file information to calculate # of bytes to read
+	size_t bytes_to_read = count;
+	//If at end of file
+	if (current_offset >= file_size) {
+		return 0;
+	}
+	//If what's left is less than count, read what's left
+	if (current_offset + bytes_to_read > file_size) { 
+		bytes_to_read = file_size - current_offset;
+	}
+
+	size_t bytes_read = 0;
+
+	//TODO
+	//Read calculated # of bytes
+	while (bytes_read < bytes_to_read) {
+
+	}
+
+	//Update offset
+	open_files[fd].offset += bytes_read;
+
+	return (int) bytes_read;
 }
