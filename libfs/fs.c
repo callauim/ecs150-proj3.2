@@ -285,6 +285,18 @@ static int free_fat(uint16_t first_block)
     return 0;
 }
 
+//is_open compares the root index of open files to given index to see if file is open
+//returns 0 if file is open, otherwise -1
+static int is_open(int index)
+{
+	for (int i = 0; i < FS_OPEN_MAX_COUNT; i++) {
+        if (open_files[i].in_use && open_files[i].root_index == index) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int fs_create(const char *filename)
 {
 	if (!mounted || !filename) {
@@ -334,14 +346,18 @@ int fs_delete(const char *filename)
 		return -1;
 	}
 	
-	//TODO: Need to check if file is open
+	//If file is open
+	if (is_open(index) < 0) {
+        return -1; 
+    }
+
 	//Free data blocks in FAT
 	if (root_dir[index].first_data_block != FAT_EOC) {
 		if (free_fat(root_dir[index].first_data_block) < 0) {
 			return -1;
 		}
 		
-		// Write updated FAT to disk
+		//Write updated FAT to disk
 		if (write_fat() < 0) {
 			return -1;
 		}
