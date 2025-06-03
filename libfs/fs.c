@@ -497,6 +497,28 @@ int fs_write(int fd, void *buf, size_t count)
 	/* TODO: Phase 4 */
 }
 
+//get_block returns the block given the first block and the offset
+static uint16_t get_block(uint16_t first_block, size_t offset)
+{
+	//If empty file
+	if (first_block == FAT_EOC) {
+		return FAT_EOC;
+	}
+
+	size_t block_number = offset / BLOCK_SIZE;
+    uint16_t current_block = first_block;
+
+	//Follow FAT chain to get correct block
+	for (size_t i = 0; i < block_number; i++) {
+        if (current_block == FAT_EOC || current_block == 0 || current_block >= sb.data_block_count) {
+            return FAT_EOC; 
+        }
+        current_block = fat[current_block];
+    }
+
+	return current_block;
+}
+
 int fs_read(int fd, void *buf, size_t count)
 {
 	if (!mounted || !buf) {
@@ -528,7 +550,7 @@ int fs_read(int fd, void *buf, size_t count)
 
 	size_t bytes_read = 0;
 	uint8_t *buffer = (uint8_t *)buf;
-    uint8_t bounce_buffer[BLOCK_SIZE];
+    uint8_t block_buffer[BLOCK_SIZE];
 
 	/*  3 Cases:
 		1) Partial Block Read
@@ -552,8 +574,18 @@ int fs_read(int fd, void *buf, size_t count)
 		}
 
 		//Go to the right block
+		uint16_t data_block = get_block(first_block, offset_in_file);
+		if (data_block == FAT_EOC) {
+			break;
+		}
+		uint16_t disk_block = sb.data_start_index + data_block;
+
 		//Bounce Buffer: Read entire block -> copy into user's buf
-		
+		if (block_read(disk_block, block_buffer) < 0) {
+            return -1; 
+        }
+		memcpy(buffer + bytes_read, block_buffer + offset_in_block, bytes_to_read_now);
+
 		//Update counters
 		bytes_read += bytes_to_read_now;
 	}
