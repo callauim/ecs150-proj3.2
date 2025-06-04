@@ -43,6 +43,11 @@ static uint16_t *fat = NULL;
 static struct root_entry root_dir[FS_FILE_MAX_COUNT];
 static int mounted = 0;
 
+/* Helper function prototypes */
+static int write_root(void);
+static int write_fat(void);
+static uint16_t find_free_block(void);
+
 int fs_mount(const char *diskname)
 {
 	uint8_t block[BLOCK_SIZE];
@@ -285,6 +290,40 @@ static int free_fat(uint16_t first_block)
     return 0;
 }
 
+//get_block returns the block given the first block and the offset
+static uint16_t get_block(uint16_t first_block, size_t offset)
+{
+	//If empty file
+	if (first_block == FAT_EOC) {
+		return FAT_EOC;
+	}
+
+	size_t block_number = offset / BLOCK_SIZE;
+    uint16_t current_block = first_block;
+
+	//Follow FAT chain to get correct block
+	for (size_t i = 0; i < block_number; i++) {
+        if (current_block == FAT_EOC || current_block == 0 || current_block >= sb.data_block_count) {
+            return FAT_EOC; 
+        }
+        current_block = fat[current_block];
+    }
+
+	return current_block;
+}
+
+/* Find free block */
+static uint16_t find_free_block(void)
+{
+	/* Search FAT chain for first free block */
+	for (uint16_t i = 1; i < sb.data_block_count; i++) {
+		if (fat[i] == 0) {
+			return i;
+		}
+	}
+	return FAT_EOC; // nothing was free
+}
+
 //is_open compares the root index of open files to given index to see if file is open
 //returns 0 if file is open, otherwise -1
 static int is_open(int index)
@@ -494,30 +533,120 @@ int fs_lseek(int fd, size_t offset)
 
 int fs_write(int fd, void *buf, size_t count)
 {
-	/* TODO: Phase 4 */
-}
-
-//get_block returns the block given the first block and the offset
-static uint16_t get_block(uint16_t first_block, size_t offset)
-{
-	//If empty file
-	if (first_block == FAT_EOC) {
-		return FAT_EOC;
-	}
-
-	size_t block_number = offset / BLOCK_SIZE;
-    uint16_t current_block = first_block;
-
-	//Follow FAT chain to get correct block
-	for (size_t i = 0; i < block_number; i++) {
-        if (current_block == FAT_EOC || current_block == 0 || current_block >= sb.data_block_count) {
-            return FAT_EOC; 
-        }
-        current_block = fat[current_block];
+	/* Validate inputs */
+    if (!mounted || !buf) {
+        return -1;
+    }
+    if (fd < 0 || fd >= FS_OPEN_MAX_COUNT || !open_files[fd].in_use) {
+        return -1;
     }
 
-	return current_block;
+	/* Get file information */
+    int root_index = open_files[fd].root_index;
+    size_t current_offset = open_files[fd].offset;
+    uint32_t file_size = root_dir[root_index].file_size;
+    uint16_t first_block = root_dir[root_index].first_data_block;
+
+	/* Calculate bytes */
+    size_t bytes_to_write = count;
+    size_t bytes_written = 0;
+    uint8_t *buffer = (uint8_t *)buf;
+    uint8_t block_buffer[BLOCK_SIZE];
+
+	/* Track last black in chain */
+	uint16_t last_block = first_block;
+    if (last_block != FAT_EOC) {
+        while (fat[last_block] != FAT_EOC && fat[last_block] != 0 && last_block < sb.data_block_count) {
+            last_block = fat[last_block];
+        }
+    }
+
+	while (bytes_written < bytes_to_write) {
+        /* Track file position */
+        size_t offset_in_file = current_offset + bytes_written;
+        size_t offset_in_block = offset_in_file % BLOCK_SIZE;
+        size_t bytes_left_in_block = BLOCK_SIZE - offset_in_block;
+        size_t bytes_to_write_now = bytes_to_write - bytes_written;
+        if (bytes_to_write_now > bytes_left_in_block) {
+            bytes_to_write_now = bytes_left_in_block;
+        }
+
+        /* Retreive or allocate current block */
+        uint16_t data_block = get_block(first_block, offset_in_file);
+        if (data_block == FAT_EOC) {
+            uint16_t new_block = find_free_block(); // need new block since we hit FAT_EOC
+            if (new_block == FAT_EOC) {
+                /* No more blocks, update and return */
+                if (offset_in_file > file_size) {
+                    root_dir[root_index].file_size = offset_in_file;
+                    if (write_root() < 0) {
+                        return -1;
+                    }
+                }
+                open_files[fd].offset += bytes_written;
+                return bytes_written;
+            }
+
+            /* Link to new block */
+            if (first_block == FAT_EOC) {
+                root_dir[root_index].first_data_block = new_block;
+                first_block = new_block; // file was empty so we set first to new
+            } else {
+                fat[last_block] = new_block; // append to chain
+            }
+            fat[new_block] = FAT_EOC;
+            last_block = new_block;
+            data_block = new_block;
+
+            /* Write FAT to disc*/
+            if (write_fat() < 0) {
+                return -1;
+            }
+        }
+
+        uint16_t disk_block = sb.data_start_index + data_block;
+
+        /* Deal with partial writes */
+        if (offset_in_block != 0 || bytes_to_write_now < BLOCK_SIZE) {
+            /* Read current block to preserve data */
+            if (block_read(disk_block, block_buffer) < 0) {
+                return -1;
+            }
+            /* Copy new data into the block */
+            memcpy(block_buffer + offset_in_block, buffer + bytes_written, bytes_to_write_now);
+            /* Write back the changed block */
+            if (block_write(disk_block, block_buffer) < 0) {
+                return -1;
+            }
+        } else {
+            /* Write the whole block */
+            if (block_write(disk_block, buffer + bytes_written) < 0) {
+                return -1;
+            }
+        }
+
+        bytes_written += bytes_to_write_now;
+    }
+
+    /* Update file size */
+    if (current_offset + bytes_written > file_size) {
+        root_dir[root_index].file_size = current_offset + bytes_written;
+        if (write_root() < 0) {
+            return -1;
+        }
+    }
+
+    
+    open_files[fd].offset += bytes_written; // update offset
+
+    /* Write modified FAT to disk (if we need to)*/
+    if (write_fat() < 0) {
+        return -1;
+    }
+
+    return bytes_written;
 }
+
 
 int fs_read(int fd, void *buf, size_t count)
 {
