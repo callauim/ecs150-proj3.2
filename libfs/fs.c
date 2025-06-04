@@ -598,7 +598,7 @@ int fs_write(int fd, void *buf, size_t count)
             last_block = new_block;
             data_block = new_block;
 
-            /* Write FAT to disc*/
+            /* Write FAT to disk */
             if (write_fat() < 0) {
                 return -1;
             }
