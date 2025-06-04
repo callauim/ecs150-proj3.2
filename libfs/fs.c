@@ -553,7 +553,7 @@ int fs_write(int fd, void *buf, size_t count)
     uint8_t *buffer = (uint8_t *)buf;
     uint8_t block_buffer[BLOCK_SIZE];
 
-	/* Track last black in chain */
+	/* Track last block in chain */
 	uint16_t last_block = first_block;
     if (last_block != FAT_EOC) {
         while (fat[last_block] != FAT_EOC && fat[last_block] != 0 && last_block < sb.data_block_count) {
